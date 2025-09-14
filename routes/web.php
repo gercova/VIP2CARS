@@ -1,6 +1,10 @@
 <?php
 
+use App\Http\Controllers\auth\AuthController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\SurveyController;
 use App\Http\Controllers\VehicleController;
+use App\Http\Controllers\ClientsController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -16,40 +20,30 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Rutas de autenticación
-Route::get('/login', function () {
-    return view('login');
-})->name('login');
+Route::get('/login',                            [AuthController::class, 'index'])->name('login');
+Route::post('/login',                           [AuthController::class, 'login'])->middleware('guest');
+Route::post('/logout',                          [AuthController::class, 'logout'])->name('logout')->middleware('guest');
 
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware('auth');
+Route::middleware('auth')->group(function () {
+    Route::get('/home',                             [HomeController::class, 'index'])->name('home');
+    Route::get('/home/stats',                       [HomeController::class, 'stats']);
+    Route::get('/home/vehicles',                    [VehicleController::class, 'index'])->name('vehicles');
+    Route::get('/home/vehicles/list',               [VehicleController::class, 'list']);
+    Route::post('/home/vehicles',                   [VehicleController::class, 'store']);
+    Route::get('/home/vehicles/{vehicle}',          [VehicleController::class, 'show']);
+    Route::delete('/home/vehicles/{vehicle}',       [VehicleController::class, 'destroy']);
 
-// Ruta principal redirige al dashboard si está autenticado, sino al login
-Route::get('/', function () {
-    if (Auth::check()) {
-        return redirect('/dashboard');
-    }
-    return redirect('/login');
-});
+    Route::get('/home/clients',                     [ClientsController::class, 'index'])->name('clients');
+    Route::get('/home/clients/list',                [ClientsController::class, 'list']);
+    Route::post('/home/clients',                    [ClientsController::class, 'store']);
+    Route::get('/home/clients/{client}',            [ClientsController::class, 'show']);
+    Route::get('/home/clients/edit/{client}',       [ClientsController::class, 'edit']);
+    Route::delete('/home/clients/destroy/{client}', [ClientsController::class, 'destroy']);
 
-// API Routes for Vehicles
-Route::prefix('api')->group(function () {
-    Route::resource('vehicles', VehicleController::class)->middleware('auth:sanctum');
-    
-    // Ruta para estadísticas del dashboard
-    Route::get('/dashboard/stats', function () {
-        $vehiclesCount = \App\Models\Vehicle::count();
-        $clientsCount = \App\Models\Client::count();
-        $surveysCount = \App\Models\Survey::where('is_active', true)->count();
-        
-        // Respuestas de hoy
-        $answersToday = \App\Models\Answer::whereDate('created_at', today())->count();
-        
-        return response()->json([
-            'vehicles' => $vehiclesCount,
-            'clients' => $clientsCount,
-            'surveys' => $surveysCount,
-            'answers_today' => $answersToday
-        ]);
-    })->middleware('auth:sanctum');
+    Route::get('/home/surveys',                     [SurveyController::class, 'index'])->name('surveys');
+    Route::get('/home/surveys/create',              [SurveyController::class, 'create']);
+    Route::post('/home/surveys',                    [SurveyController::class, 'store']);
+    Route::get('/home/surveys/{survey}',            [SurveyController::class, 'show']);
+    Route::get('/home/surveys/{survey}/edit',       [SurveyController::class, 'edit']);
+    Route::delete('/home/surveys/{survey}',         [SurveyController::class, 'destroy']);
 });

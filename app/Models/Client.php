@@ -5,12 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Client extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
-    protected $fillable = ['dni', 'nombres', 'email', 'telefono'];
+    protected $table        = 'clientes';
+    protected $primaryKey   = 'id';
+    protected $guarded      = [];
 
     protected $casts = [
         'dni'           => 'string',

@@ -7,57 +7,73 @@ use App\Models\Vehicle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-class VehicleController extends Controller
-{
+class VehicleController extends Controller {
+    
+    public function __construct() {
+        $this->middleware('auth');
+    }
+    
     public function index() {
-        $vehicles = Vehicle::with('clients')->get();
-        return response()->json($vehicles);
+        $clients = Client::all();
+        return view('vehicles.index', compact('clients'));
+    }
+
+    public function list () {
+        $results = Vehicle::join('clientes', 'vehiculos.cliente_id', '=', 'clientes.id')
+            ->select('vehiculos.placa', 'vehiculos.marca', 'vehiculos.modelo', 'vehiculos.anio_fabricacion', 'clientes.dni', 'clientes.nombres as cliente', 'vehiculos.created_at', 'vehiculos.id')
+            ->get();
+
+        $data = $results->map(function ($item, $index) {
+            return [
+                $index + 1,
+                $item->placa,
+                $item->marca,
+                $item->modelo,
+                $item->anio_fabricacion,
+                $item->dni.' '.$item->cliente,
+                $item->created_at->format('Y-m-d H:i:s'),
+                sprintf(
+                    '<button type="button" class="btn btn-sm btn-warning update-row btn-md" value="%s">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>&nbsp;
+                    <button type="button" class="btn btn-sm btn-danger delete-vehicle btn-md" value="%s">
+                        <i class="bi bi-trash"></i>
+                    </button>',
+                    htmlspecialchars($item->id, ENT_QUOTES, 'UTF-8'),
+                    htmlspecialchars($item->id, ENT_QUOTES, 'UTF-8'),
+                ),
+            ];
+        });
+
+      	return response()->json([
+ 			"sEcho"					    => 1,
+ 			"iTotalRecords"			    => $data->count(),
+ 			"iTotalDisplayRecords"	    => $data->count(),
+ 			"aaData"				    => $data,
+ 		]);
     }
 
     public function store(Request $request) {
         $validated = $request->validate([
-            'plate' => 'required|unique:vehicles|string|max:10',
-            'brand' => 'required|string|max:50',
-            'model' => 'required|string|max:50',
-            'manufacture_year' => 'required|integer|min:1900|max:' . (date('Y') + 1),
-            'client_name' => 'required|string|max:100',
-            'client_last_name' => 'required|string|max:100',
-            'client_document_number' => 'required|string|max:20',
-            'client_email' => 'required|email|max:100',
-            'client_phone' => 'required|string|max:20'
+            'placa'             => 'required|string|max:10|unique:vehiculos,placa,'.$request->id,
+            'marca'             => 'required|string|max:50',
+            'modelo'            => 'required|string|max:50',
+            'anio_fabricacion'  => 'required|integer|min:1900|max:' . (date('Y') + 1),
+            'detalles'          => 'required|string|max:100',
+            'cliente_id'        => 'required',
         ]);
 
+        DB::beginTransaction();
         try {
-            DB::beginTransaction();
-
-            // Crear o actualizar cliente
-            $client = Client::updateOrCreate(
-                ['document_number' => $validated['client_document_number']],
-                [
-                    'name' => $validated['client_name'],
-                    'last_name' => $validated['client_last_name'],
-                    'email' => $validated['client_email'],
-                    'phone' => $validated['client_phone']
-                ]
-            );
-
-            // Crear vehículo
-            $vehicle = Vehicle::create([
-                'plate' => $validated['plate'],
-                'brand' => $validated['brand'],
-                'model' => $validated['model'],
-                'manufacture_year' => $validated['manufacture_year']
-            ]);
-
-            // Asociar cliente con vehículo
-            $vehicle->clients()->attach($client->id);
-
+            // Crear o actualizar vehículo
+            $result = Vehicle::updateOrCreate(['id' => $request->id], $validated);
             DB::commit();
 
             return response()->json([
-                'message' => 'Vehículo y cliente registrados correctamente',
-                'data' => $vehicle->load('clients')
-            ], 201);
+                'status'    => true,
+                'type'      => 'success',
+                'message'   => $result->wasChanged() ? 'Datos de vehículo actualizados correctamente' : 'Vehículo registrado correctamente',
+            ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -67,86 +83,36 @@ class VehicleController extends Controller
         }
     }
 
-    public function show($id)
-    {
-        $vehicle = Vehicle::with('clients')->findOrFail($id);
-        return response()->json($vehicle);
-    }
-
-    public function update(Request $request, $id)
-    {
-        $vehicle = Vehicle::with('clients')->findOrFail($id);
-        
-        $validated = $request->validate([
-            'plate' => 'required|string|max:10|unique:vehicles,plate,' . $id,
-            'brand' => 'required|string|max:50',
-            'model' => 'required|string|max:50',
-            'manufacture_year' => 'required|integer|min:1900|max:' . (date('Y') + 1),
-            'client_name' => 'required|string|max:100',
-            'client_last_name' => 'required|string|max:100',
-            'client_document_number' => 'required|string|max:20',
-            'client_email' => 'required|email|max:100',
-            'client_phone' => 'required|string|max:20'
-        ]);
-
-        try {
-            DB::beginTransaction();
-
-            // Actualizar vehículo
-            $vehicle->update([
-                'plate' => $validated['plate'],
-                'brand' => $validated['brand'],
-                'model' => $validated['model'],
-                'manufacture_year' => $validated['manufacture_year']
-            ]);
-
-            // Crear o actualizar cliente
-            $client = Client::updateOrCreate(
-                ['document_number' => $validated['client_document_number']],
-                [
-                    'name' => $validated['client_name'],
-                    'last_name' => $validated['client_last_name'],
-                    'email' => $validated['client_email'],
-                    'phone' => $validated['client_phone']
-                ]
-            );
-
-            // Sincronizar relación (eliminar anteriores y agregar nueva)
-            $vehicle->clients()->sync([$client->id]);
-
-            DB::commit();
-
+    public function searchClient (Request $request) {
+        $client = Client::where('dni', 'like', '%'.$request->q.'%')->orWhere('name', 'like', '%'.$request->q.'%')->where('email', 'like', '%'.$request->q.'%')->get()->toArray();
+        if (!$client) {
             return response()->json([
-                'message' => 'Vehículo y cliente actualizados correctamente',
-                'data' => $vehicle->load('clients')
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Error al actualizar el vehículo y cliente',
-                'error' => $e->getMessage()
-            ], 500);
+                'message' => 'Cliente no encontrado'
+            ], 404);
         }
+        return response()->json($client);
     }
 
-    public function destroy($id)
-    {
+    public function show(Vehicle $vehicle) {
+        //$vehicle = Vehicle::with('clients')->findOrFail($vehicle->id);
+        //return response()->json($vehicle);
+        return $vehicle;
+    }
+
+    public function destroy($id) {
         $vehicle = Vehicle::findOrFail($id);
+        DB::beginTransaction();
         
         try {
-            DB::beginTransaction();
-            
             // Eliminar relaciones primero
-            $vehicle->clients()->detach();
-            
+            //$vehicle->clients()->detach();
             // Eliminar vehículo
             $vehicle->delete();
-            
             DB::commit();
             
             return response()->json([
                 'message' => 'Vehículo eliminado correctamente'
-            ]);
+            ])->noContent();
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
