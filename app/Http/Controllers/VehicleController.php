@@ -94,8 +94,6 @@ class VehicleController extends Controller {
     }
 
     public function show(Vehicle $vehicle) {
-        //$vehicle = Vehicle::with('clients')->findOrFail($vehicle->id);
-        //return response()->json($vehicle);
         return $vehicle;
     }
 
@@ -104,9 +102,6 @@ class VehicleController extends Controller {
         DB::beginTransaction();
         
         try {
-            // Eliminar relaciones primero
-            //$vehicle->clients()->detach();
-            // Eliminar vehículo
             $vehicle->delete();
             DB::commit();
             
